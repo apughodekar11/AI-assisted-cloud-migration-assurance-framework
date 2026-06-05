@@ -1,5 +1,14 @@
 # Cloud Migration Assurance Framework
 
+![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazonwebservices&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-7B42BC?style=flat&logo=terraform&logoColor=white)
+![OPA](https://img.shields.io/badge/OPA%2FRego-566069?style=flat&logo=openpolicyagent&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
+![CI/CD](https://img.shields.io/badge/CI%2FCD-2088FF?style=flat&logo=githubactions&logoColor=white)
+
+> Policy checks plus AI anomaly detection, wired into one CI/CD gate. A migration either passes or it does not.
+
 Migrating a workload to the cloud is the easy part. Knowing the migration actually worked, before your users find out it didn't, is the hard part.
 
 This project is an MSc research framework that answers one question automatically: **is this migrated environment healthy and compliant, or not?** It checks the infrastructure against policy, watches the telemetry for anomalies, and gives a clear pass or fail instead of a gut feeling.
