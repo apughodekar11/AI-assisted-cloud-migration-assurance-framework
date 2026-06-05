@@ -1,0 +1,13 @@
+{
+  "schema": "telemetry/schemas/metrics_v1.json",
+  "generated_at": "2025-11-23T13:53:24Z",
+  "anomaly": false,
+  "reason": "no anomaly detected",
+  "thresholds": {
+    "latency_p95_ms": 350,
+    "error_rate_pct": 1.0
+  },
+  "sample_window": {
+    "points": 0
+  }
+}

@@ -1,0 +1,58 @@
+service: multi-svc
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: python3.11
+  region: ${env:AWS_REGION, 'eu-west-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 29
+  logs:
+    httpApi: true
+  environment:
+    VERSION: ${env:VERSION, 'v0.1.0'}
+    DB_HOST: ${ssm:/${env:TF_STACK_NAME}/db_host}
+    DB_PORT: ${ssm:/${env:TF_STACK_NAME}/db_port}
+    DB_USER: ${ssm:/${env:TF_STACK_NAME}/db_user}
+    DB_PASS: ${ssm:/${env:TF_STACK_NAME}/db_pass}
+    DB_NAME: ${ssm:/${env:TF_STACK_NAME}/db_name}
+  vpc:
+    securityGroupIds:
+      - ${ssm:/${env:TF_STACK_NAME}/lambda_sg_id}
+    subnetIds:
+      - ${ssm:/${env:TF_STACK_NAME}/private_subnet_ids/0}
+      - ${ssm:/${env:TF_STACK_NAME}/private_subnet_ids/1}
+
+package:
+  patterns:
+    - '!node_modules/**'
+    - '!**/__pycache__/**'
+    - '../app/**'                 # include your FastAPI code
+    - 'requirements.txt'          # wrapper in serverless/
+
+functions:
+  users:
+    handler: app/users/main.handler
+    events:
+      - httpApi: { path: /users, method: get }
+      - httpApi: { path: /users, method: post }
+      - httpApi: { path: /healthz, method: get }
+  orders:
+    handler: app/orders/main.handler
+    events:
+      - httpApi: { path: /orders, method: get }
+      - httpApi: { path: /orders, method: post }
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    requirementsFile: requirements.txt   # wrapper -> "-r ../app/requirements.txt"
+    pythonBin: python3.11
+    dockerizePip: false
+    useStaticCache: true
+    slim: false
+    layer: false                         # vendor deps into the function zip (no layer)
+

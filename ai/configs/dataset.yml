@@ -1,0 +1,18 @@
+bucket_size_seconds: 60
+lookback_minutes: 60
+
+feature_columns:
+  - db_cpu
+  - db_conn
+  - db_write_ms
+  - cost_daily_usd
+  - hour_of_day
+  - day_of_week
+
+target_columns:
+  - db_read_ms
+
+train_ratio: 0.7
+val_ratio: 0.15
+test_ratio: 0.15
+

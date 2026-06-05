@@ -1,0 +1,11 @@
+hidden_size: 64
+num_layers: 2
+dropout: 0.2
+learning_rate: 0.001
+batch_size: 64
+epochs: 20
+#lookback_minutes: 10
+weight_decay: 0.0
+seq_len: 30
+pred_horizon: 1
+batch_size: 8

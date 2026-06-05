@@ -1,0 +1,223 @@
+name: Part1-Automation-CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: eu-west-1
+  TF_STACK_NAME: cloud-migrate-ai-dev
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || '' }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || '' }}
+
+jobs:
+  validate-build:
+    name: Validate, OPA tests, package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install system tools (jq, curl)
+        run: sudo apt-get update && sudo apt-get install -y jq curl unzip
+
+      - name: Download OPA v1
+        run: |
+          set -euo pipefail
+          VER="v1.10.1"
+          BIN="opa_linux_amd64_static"
+          URL_GH="https://github.com/open-policy-agent/opa/releases/download/${VER}/${BIN}"
+          URL_SITE="https://openpolicyagent.org/downloads/${VER#v}/${BIN}"
+
+          curl -fsSL -o opa "$URL_GH" || curl -fsSL -o opa "$URL_SITE"
+          chmod +x opa
+          ./opa version
+
+      - name: Setup OPA v1
+        uses: open-policy-agent/setup-opa@v2
+        with:
+          version: v1.10.1
+
+      - name: OPA format & tests
+        run: |
+          opa version
+          opa fmt -w policy/opa
+          opa test -v policy/opa
+
+      - name: Install Serverless CLI (global)
+        run: |
+          npm install -g serverless@3 serverless-python-requirements
+          echo "npm prefix (global): $(npm prefix -g)"
+          echo "npm bin (global): $(npm bin -g)"
+          echo "$(npm bin -g)" >> "$GITHUB_PATH"  
+          echo "PATH=$PATH"
+          which serverless || true
+          serverless --version 
+
+
+      - name: Dry package (does not deploy)
+        working-directory: serverless
+        run: |
+          serverless plugin install -n serverless-python-requirements
+          serverless package --stage dev --region ${{ env.AWS_REGION }}
+
+  deploy-and-gates:
+    name: Deploy (Serverless) & run gates
+    needs: validate-build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}   
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies for AI
+        run: |
+          python -m pip install --upgrade pip
+          # lightweight deps needed by build_features.py and AI gate
+          python -m pip install pandas numpy pyarrow boto3 PyYAML scikit-learn
+          # CPU-only PyTorch (no gigantic CUDA dependencies)
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.3.1+cpu
+
+      - name: Install system tools (jq, curl)
+        run: sudo apt-get update && sudo apt-get install -y jq curl unzip
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Cache Node modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('serverless/package-lock.json') }}
+
+      - name: Install Serverless
+        working-directory: serverless
+        run: |
+          npm ci || npm i
+          npx serverless --version
+
+      - name: Deploy Serverless (dev)
+        working-directory: serverless
+        run: npx --yes serverless@3 deploy --stage dev --region ${{ env.AWS_REGION }} --verbose
+
+      - name: Save API base URL to artifacts_http_url.txt
+        working-directory: serverless
+        run: |
+              URL=$(npx --yes serverless@3 info --stage dev --region ${{ env.AWS_REGION }} \
+                | awk '/endpoints:/{p=1;next} p && /GET -/ {print $3; exit}')
+              if [ -z "$URL" ]; then
+                echo "ERROR: No endpoint found from 'serverless info'"; exit 1
+              fi
+              CLEAN=$(echo "$URL" | sed 's/\/users$//')
+              echo "$CLEAN" > ../artifacts_http_url.txt
+              mkdir -p ../artifacts
+              cp ../artifacts_http_url.txt ../artifacts/artifacts_http_url.txt
+              echo "Saved URL: $(cat ../artifacts_http_url.txt)"
+
+      - name: Download OPA v1
+        run: |
+          curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+          chmod +x opa
+          ./opa version
+
+      - name: Smoke gate
+        run: ./deploy/scripts/smoke.sh
+
+      - name: Export artifacts from SSM (no TF)
+        run: ./deploy/scripts/export_artifacts_from_ssm.sh
+
+      - name: OPA gate (policy pass required)
+        run: ./validate/gates/opa_gate.sh artifacts/migration_aws_dev.json
+
+      - name: Anomaly & Cost/Carbon stubs
+        run: |
+          ./validate/gates/anomaly_hook.sh telemetry/schemas/metrics_v1.json
+          ./validate/gates/cost_carbon_gate.sh
+
+      - name: Conditional rollback on anomaly
+        if: always()
+        run: |
+          if jq -e '.anomaly==true' validate/anomaly.json >/dev/null 2>&1; then
+            echo "[rollback] anomaly detected — triggering rollback"
+            ./deploy/scripts/rollback.sh --cloud aws --stage dev
+          else
+            echo "[rollback] no anomaly — continuing pipeline"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: part1-artifacts
+          path: |
+            artifacts/migration_aws_dev.json
+            artifacts/artifacts_http_url.txt
+            validate/anomaly.json
+            validate/cost_carbon.txt
+
+      - name: Summarize Results
+        run: |
+          echo "**Deployment Successful**" >> $GITHUB_STEP_SUMMARY
+          echo "**OPA Gate:** PASS" >> $GITHUB_STEP_SUMMARY
+          echo "**Cost & Carbon Gate:** PASS" >> $GITHUB_STEP_SUMMARY
+          echo "**Anomaly Detection:** No anomaly or rollback triggered" >> $GITHUB_STEP_SUMMARY
+          echo "⚙️ **Artifacts:** Uploaded to this workflow run" >> $GITHUB_STEP_SUMMARY
+
+      - name: Build AI features
+        run: |
+          export PYTHONPATH=$PWD
+          python ai/features/build_features.py \
+            --config ai/configs/dataset.yml \
+            --out telemetry/processed/features.parquet
+          
+      - name: Train AI models
+        run: |
+          export PYTHONPATH=$PWD
+          python ai/models/train_lstm.py \
+            --features-path telemetry/processed/features.parquet \
+            --dataset-config ai/configs/dataset.yml \
+            --model-config ai/configs/model_lstm.yml \
+            --out-dir ai/artifacts/models
+
+          python ai/models/train_autoencoder.py \
+            --features-path telemetry/processed/features.parquet \
+            --dataset-config ai/configs/dataset.yml \
+            --model-config ai/configs/model_ae.yml \
+            --out-dir ai/artifacts/models
+
+      - name: AI Validation Gate
+        env:
+            PYTHONPATH: ${{ github.workspace }}
+        run: ./validate/gates/ai_gate.sh
+

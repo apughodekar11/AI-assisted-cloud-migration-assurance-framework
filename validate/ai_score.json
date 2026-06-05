@@ -1,0 +1,34 @@
+{
+  "anomaly_score": 0.6624233964230333,
+  "threshold": 3.0,
+  "flag": false,
+  "lstm": {
+    "raw_error": 0.00047435022589497494,
+    "normalized_error": 0.9740859279636473,
+    "baseline": 0.0004869695909544826,
+    "feature_columns": [
+      "db_cpu",
+      "db_conn",
+      "db_write_ms",
+      "cost_daily_usd",
+      "hour_of_day",
+      "day_of_week"
+    ],
+    "target_columns": [
+      "db_read_ms"
+    ]
+  },
+  "autoencoder": {
+    "raw_error": 0.010687612653666799,
+    "normalized_error": 0.35076086488241925,
+    "baseline": 0.030469797869980338,
+    "feature_columns": [
+      "db_cpu",
+      "db_conn",
+      "db_write_ms",
+      "cost_daily_usd",
+      "hour_of_day",
+      "day_of_week"
+    ]
+  }
+}

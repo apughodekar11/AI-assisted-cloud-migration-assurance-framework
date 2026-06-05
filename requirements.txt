@@ -1,0 +1,6 @@
+pandas
+numpy
+pyarrow
+boto3
+PyYAML
+torch

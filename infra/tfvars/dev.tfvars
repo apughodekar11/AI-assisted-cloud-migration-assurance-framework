@@ -1,0 +1,6 @@
+project = "cloud-migrate-ai"
+env     = "dev"
+region  = "eu-west-1"
+db_name = "cmadb"
+db_user = "cmadmin"
+db_pass = "reserachaws"

@@ -1,0 +1,73 @@
+name: deploy-part1
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy-aws:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: eu-west-1
+      TF_IN_AUTOMATION: "true"
+      TF_STACK_NAME: cloud-migrate-ai-dev
+      VERSION: v0.1.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node & Python
+        uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
+
+      - name: AWS creds
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform fmt/validate
+        run: |
+          cd infra/terraform/aws
+          terraform fmt -check
+          terraform validate
+
+      - name: Terraform plan -> plan.json
+        run: |
+          cd infra/terraform/aws
+          terraform init -upgrade
+          terraform plan -var-file=../../tfvars/dev.tfvars -out tfplan
+          terraform show -json tfplan > ../../..//plan.json
+
+      - name: OPA policy gate
+        run: ./validate/gates/opa_gate.sh plan.json
+
+      - name: Apply infra + deploy app
+        run: ./deploy/scripts/plan_apply.sh aws dev
+
+      - name: Smoke test
+        run: ./deploy/scripts/smoke.sh
+
+      - name: Cost & carbon collection
+        run: ./validate/gates/cost_carbon_gate.sh aws dev
+
+      - name: AI anomaly hook (self-heal)
+        run: ./validate/gates/anomaly_hook.sh || ./deploy/scripts/rollback.sh
+
+      - name: Export artifacts
+        run: ./deploy/scripts/export_artifacts.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts
+          path: artifacts/
+

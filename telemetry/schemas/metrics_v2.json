@@ -1,0 +1,16 @@
+{
+  "timestamp": "datetime",
+  "metrics": {
+    "api_p50_ms": "float",
+    "api_p95_ms": "float",
+    "api_4xx_rate": "float",
+    "api_5xx_rate": "float",
+    "api_rps": "float",
+    "db_cpu": "float",
+    "db_conn": "float",
+    "db_read_ms": "float",
+    "db_write_ms": "float",
+    "cost_daily_usd": "float"
+  }
+}
+

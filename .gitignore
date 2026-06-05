@@ -1,0 +1,24 @@
+# Terraform
+infra/terraform/aws/.terraform/
+infra/terraform/aws/.terraform.lock.hcl
+
+# Serverless
+serverless/.serverless/
+serverless/node_modules/
+serverless/package-lock.json
+
+# Local tools
+opa
+validate/cost_carbon.txt
+artifacts/
+# Python / virtualenv
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.eggs/
+*.egg-info/
+dist/
+build/

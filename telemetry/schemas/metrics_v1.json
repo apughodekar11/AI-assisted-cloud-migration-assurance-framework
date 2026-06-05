@@ -1,0 +1,14 @@
+{
+  "cloud": "aws",
+  "region": "eu-west-1",
+  "service": "orders",
+  "metrics": {
+    "latency_p95_ms": 210,
+    "error_rate_pct": 0.2,
+    "cpu_p95": 0.62,
+    "daily_cost_eur": 3.45,
+    "carbon_intensity_g_per_kwh": 210
+  },
+  "timestamp": "2025-10-15T12:30:00Z"
+}
+
